@@ -78,14 +78,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "Ticket Masters" },
+      { name: "description", content: "Pyne Ticket Masters is a full-stack event ticket management and validation app." },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "Ticket Masters" },
+      { property: "og:description", content: "Pyne Ticket Masters is a full-stack event ticket management and validation app." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Ticket Masters" },
+      { name: "twitter:description", content: "Pyne Ticket Masters is a full-stack event ticket management and validation app." },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/uUsfQvfXW0a4k0nesvTg8Oj4ydq1/social-images/social-1781520013483-noname.webp" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/uUsfQvfXW0a4k0nesvTg8Oj4ydq1/social-images/social-1781520013483-noname.webp" },
     ],
     links: [
       {
