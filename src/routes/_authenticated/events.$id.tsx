@@ -71,6 +71,7 @@ function EventDetail() {
       <Tabs defaultValue="details" className="mt-6">
         <TabsList>
           <TabsTrigger value="details">Details & Design</TabsTrigger>
+          <TabsTrigger value="ticketTypes">Ticket Types</TabsTrigger>
           <TabsTrigger value="generate">Generate tickets</TabsTrigger>
           <TabsTrigger value="tickets">Tickets</TabsTrigger>
           <TabsTrigger value="print">Print</TabsTrigger>
@@ -78,6 +79,9 @@ function EventDetail() {
 
         <TabsContent value="details" className="mt-6">
           <DetailsTab event={event} onUpdate={() => qc.invalidateQueries({ queryKey: ["event", id] })} />
+        </TabsContent>
+        <TabsContent value="ticketTypes" className="mt-6">
+          <TicketTypesTab eventId={id} />
         </TabsContent>
         <TabsContent value="generate" className="mt-6">
           <GenerateTab eventId={id} />
@@ -340,6 +344,197 @@ function GenerateTab({ eventId }: { eventId: string }) {
   );
 }
 
+// --- TICKET TYPES ----------------------------------------------------------------
+function TicketTypesTab({ eventId }: { eventId: string }) {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [price, setPrice] = useState("");
+  const [quantity, setQuantity] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const { data: types } = useQuery({
+    queryKey: ["ticket-types", eventId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("ticket_types")
+        .select("*")
+        .eq("event_id", eventId)
+        .order("price", { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: soldCounts } = useQuery({
+    queryKey: ["sold-counts", eventId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tickets")
+        .select("ticket_type_id")
+        .eq("event_id", eventId)
+        .not("ticket_type_id", "is", null);
+      if (error) throw error;
+      const counts: Record<string, number> = {};
+      (data ?? []).forEach((t) => {
+        if (t.ticket_type_id) {
+          counts[t.ticket_type_id] = (counts[t.ticket_type_id] ?? 0) + 1;
+        }
+      });
+      return counts;
+    },
+  });
+
+  async function saveType() {
+    if (!name.trim() || !price || !quantity) {
+      toast.error("Fill in all required fields");
+      return;
+    }
+
+    const row = {
+      event_id: eventId,
+      name: name.trim(),
+      description: description.trim() || null,
+      price: parseFloat(price),
+      quantity_total: parseInt(quantity),
+    };
+
+    if (editingId) {
+      const { error } = await supabase
+        .from("ticket_types")
+        .update(row)
+        .eq("id", editingId);
+      if (error) return toast.error(error.message);
+      toast.success("Ticket type updated");
+    } else {
+      const { error } = await supabase.from("ticket_types").insert(row);
+      if (error) return toast.error(error.message);
+      toast.success("Ticket type created");
+    }
+
+    resetForm();
+    qc.invalidateQueries({ queryKey: ["ticket-types", eventId] });
+  }
+
+  function resetForm() {
+    setShowForm(false);
+    setEditingId(null);
+    setName("");
+    setDescription("");
+    setPrice("");
+    setQuantity("");
+  }
+
+  function editType(type: any) {
+    setEditingId(type.id);
+    setName(type.name);
+    setDescription(type.description || "");
+    setPrice(type.price.toString());
+    setQuantity(type.quantity_total.toString());
+    setShowForm(true);
+  }
+
+  async function deleteType(id: string) {
+    if (!confirm("Delete this ticket type?")) return;
+    const { error } = await supabase.from("ticket_types").delete().eq("id", id);
+    if (error) return toast.error(error.message);
+    toast.success("Deleted");
+    qc.invalidateQueries({ queryKey: ["ticket-types", eventId] });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Create ticket categories that visitors can purchase on the public event page.
+        </p>
+        <Button onClick={() => setShowForm(!showForm)}>
+          {showForm ? "Cancel" : "Add Ticket Type"}
+        </Button>
+      </div>
+
+      {showForm && (
+        <div className="rounded-xl border bg-card p-5 space-y-4">
+          <h3 className="font-semibold">{editingId ? "Edit" : "New"} Ticket Type</h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label>Name *</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., General Admission, VIP" />
+            </div>
+            <div>
+              <Label>Price ($) *</Label>
+              <Input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} />
+            </div>
+            <div>
+              <Label>Quantity Available *</Label>
+              <Input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={saveType}>{editingId ? "Update" : "Create"}</Button>
+            <Button variant="outline" onClick={resetForm}>Cancel</Button>
+          </div>
+        </div>
+      )}
+
+      {!types?.length && !showForm ? (
+        <div className="rounded-xl border border-dashed p-12 text-center text-muted-foreground">
+          No ticket types yet. Add ticket types to enable public purchases.
+        </div>
+      ) : (
+        <div className="rounded-xl border bg-card">
+          <table className="w-full text-sm">
+            <thead className="border-b bg-muted/40 text-left">
+              <tr>
+                <th className="p-3">Name</th>
+                <th className="p-3">Price</th>
+                <th className="p-3">Available</th>
+                <th className="p-3">Sold</th>
+                <th className="p-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {types?.map((t: any) => {
+                const sold = soldCounts?.[t.id] ?? 0;
+                return (
+                  <tr key={t.id}>
+                    <td className="p-3">
+                      <div>
+                        <p className="font-medium">{t.name}</p>
+                        {t.description && (
+                          <p className="text-xs text-muted-foreground">{t.description}</p>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-3">${t.price.toFixed(2)}</td>
+                    <td className="p-3">{t.quantity_total}</td>
+                    <td className="p-3">
+                      <span className={sold >= t.quantity_total ? "text-red-500 font-medium" : ""}>
+                        {sold}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => editType(t)}>Edit</Button>
+                        <Button variant="destructive" size="sm" onClick={() => deleteType(t.id)}>Delete</Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- TICKETS LIST ----------------------------------------------------------------
 function TicketsTab({ eventId }: { eventId: string }) {
   const { data: tickets } = useQuery({
@@ -349,30 +544,45 @@ function TicketsTab({ eventId }: { eventId: string }) {
         .from("tickets")
         .select("*")
         .eq("event_id", eventId)
-        .order("serial_number");
+        .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },
   });
 
   if (!tickets) return <div>Loading…</div>;
-  if (!tickets.length) return <div className="rounded-xl border border-dashed p-12 text-center text-muted-foreground">No tickets yet. Generate some on the previous tab.</div>;
+  if (!tickets.length) return <div className="rounded-xl border border-dashed p-12 text-center text-muted-foreground">No tickets yet. Create ticket types to enable purchases, or generate tickets manually.</div>;
 
   return (
-    <div className="rounded-xl border bg-card">
+    <div className="rounded-xl border bg-card overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="border-b bg-muted/40 text-left">
           <tr>
             <th className="p-3">Serial</th>
+            <th className="p-3">Type</th>
+            <th className="p-3">Price</th>
+            <th className="p-3">Buyer</th>
             <th className="p-3">Status</th>
             <th className="p-3">Used at</th>
-            <th className="p-3">Verify link</th>
+            <th className="p-3">Verify</th>
           </tr>
         </thead>
         <tbody className="divide-y">
           {tickets.map((t: any) => (
             <tr key={t.id}>
-              <td className="p-3 font-mono">{t.serial_number}</td>
+              <td className="p-3 font-mono text-xs">{t.serial_number}</td>
+              <td className="p-3">{t.ticket_type || "—"}</td>
+              <td className="p-3">{t.price != null ? `$${t.price.toFixed(2)}` : "—"}</td>
+              <td className="p-3">
+                {t.buyer_name ? (
+                  <div>
+                    <p className="font-medium">{t.buyer_name}</p>
+                    <p className="text-xs text-muted-foreground">{t.buyer_email}</p>
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </td>
               <td className="p-3">
                 <span
                   className={`rounded px-2 py-0.5 text-xs ${
@@ -386,15 +596,15 @@ function TicketsTab({ eventId }: { eventId: string }) {
                   {t.status}
                 </span>
               </td>
-              <td className="p-3 text-muted-foreground">{t.used_at ? new Date(t.used_at).toLocaleString() : "—"}</td>
+              <td className="p-3 text-muted-foreground text-xs">{t.used_at ? new Date(t.used_at).toLocaleString() : "—"}</td>
               <td className="p-3">
                 <a
                   href={`/verify/${t.verification_code}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                  className="inline-flex items-center gap-1 text-primary hover:underline text-xs"
                 >
-                  open <ExternalLink className="h-3 w-3" />
+                  view <ExternalLink className="h-3 w-3" />
                 </a>
               </td>
             </tr>
