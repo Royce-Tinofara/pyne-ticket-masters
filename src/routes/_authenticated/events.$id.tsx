@@ -208,12 +208,14 @@ export function TicketPreview({
   serial,
   code,
   scale = 2,
+  showSize = false,
 }: {
   designUrl: string | null;
   template: any;
   serial: string;
   code: string;
   scale?: number;
+  showSize?: boolean;
 }) {
   // scale factor: mm -> px on screen
   const w = template.width_mm * scale;
@@ -248,6 +250,11 @@ export function TicketPreview({
       >
         {serial}
       </div>
+      {showSize && (
+        <div className="absolute bottom-1 right-1 rounded bg-slate-900/70 px-1.5 py-0.5 text-white" style={{ fontSize: 8 * scale * 0.35 }}>
+          {template.width_mm}×{template.height_mm}mm
+        </div>
+      )}
     </div>
   );
 }
@@ -402,7 +409,9 @@ function TicketsTab({ eventId }: { eventId: string }) {
 function PrintTab({ event }: { event: EventRow }) {
   const [perPage, setPerPage] = useState<4 | 6 | 8>(8);
   const [size, setSize] = useState<"A5" | "A6">("A5");
+  const [rotation, setRotation] = useState<0 | 90 | 180 | 270>(0);
   const [designUrl, setDesignUrl] = useState<string | null>(null);
+  const [showDimensions, setShowDimensions] = useState(true);
 
   useEffect(() => {
     getSignedDesignUrl(event.ticket_design_url).then(setDesignUrl);
@@ -425,29 +434,33 @@ function PrintTab({ event }: { event: EventRow }) {
   // 8-up = 4 cols × 2 rows filling A4 portrait (each ticket ≈ 52.5mm × 148.5mm)
   // 6-up = 3 cols × 2 rows (each ≈ 70mm × 148.5mm)
   // 4-up = 2 cols × 2 rows A5-ish (each ≈ 105mm × 148.5mm)
-  const layout =
+  const baseLayout =
     perPage === 8
       ? { cols: 4, width_mm: 52.5, height_mm: 148.5 }
       : perPage === 6
       ? { cols: 3, width_mm: 70, height_mm: 148.5 }
       : { cols: 2, width_mm: 105, height_mm: 148.5 };
 
+  // Swap dimensions if rotated 90 or 270 degrees
+  const isRotated90or270 = rotation === 90 || rotation === 270;
+  const layout = isRotated90or270
+    ? { ...baseLayout, width_mm: baseLayout.height_mm, height_mm: baseLayout.width_mm }
+    : baseLayout;
+
   // Convert mm → on-screen px at 96dpi so print mm matches exactly.
   const MM_TO_PX = 96 / 25.4;
-  const scale =
-    perPage === 8
-      ? MM_TO_PX
-      : perPage === 6
-      ? MM_TO_PX
-      : size === "A5"
-      ? MM_TO_PX
-      : MM_TO_PX;
 
   const dims = { width_mm: layout.width_mm, height_mm: layout.height_mm };
   const template = { ...event.template, ...dims };
 
+  // Preview scale (scaled down to fit screen)
+  const PREVIEW_SCALE = 0.35;
+  // Print scale (exact mm to px at 96dpi)
+  const PRINT_SCALE = MM_TO_PX;
+
   return (
     <div className="space-y-6">
+      {/* Control Panel */}
       <div className="flex flex-wrap items-center gap-4 rounded-xl border bg-card p-4 print:hidden">
         <div>
           <Label className="text-xs">Tickets per page</Label>
@@ -467,9 +480,111 @@ function PrintTab({ event }: { event: EventRow }) {
             </div>
           </div>
         )}
+        <div>
+          <Label className="text-xs">Rotation</Label>
+          <div className="mt-1 flex gap-1">
+            {([0, 90, 180, 270] as const).map((r) => (
+              <Button key={r} size="sm" variant={rotation === r ? "default" : "outline"} onClick={() => setRotation(r)}>
+                {r}°
+              </Button>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="showDimensions"
+            checked={showDimensions}
+            onChange={(e) => setShowDimensions(e.target.checked)}
+            className="h-4 w-4"
+          />
+          <Label htmlFor="showDimensions" className="text-xs cursor-pointer">Show dimensions</Label>
+        </div>
         <Button onClick={() => window.print()} className="ml-auto"><Printer className="h-4 w-4" /> Print</Button>
       </div>
 
+      {/* Ticket Size Info */}
+      <div className="rounded-xl border bg-card p-4 print:hidden">
+        <div className="flex flex-wrap items-center gap-6 text-sm">
+          <div>
+            <span className="text-muted-foreground">Ticket size: </span>
+            <span className="font-medium">{layout.width_mm} × {layout.height_mm} mm</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Grid: </span>
+            <span className="font-medium">{layout.cols} cols × {perPage / layout.cols} rows</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Rotation: </span>
+            <span className="font-medium">{rotation}°</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">A4 page: </span>
+            <span className="font-medium">210 × 297 mm</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Print Preview Container - Shows actual A4 page at scaled size */}
+      <div className="print:hidden">
+        <h3 className="mb-3 text-sm font-semibold text-muted-foreground">Print Preview (A4 page)</h3>
+        <div className="overflow-auto rounded-xl border bg-slate-100 p-4">
+          <div
+            className="relative mx-auto bg-white shadow-lg"
+            style={{
+              width: `210mm`,
+              height: `297mm`,
+              transform: `scale(${PREVIEW_SCALE})`,
+              transformOrigin: "top center",
+            }}
+          >
+            {/* Grid overlay showing ticket boundaries */}
+            <div
+              className="absolute inset-0 grid"
+              style={{
+                gridTemplateColumns: `repeat(${layout.cols}, ${layout.width_mm}mm)`,
+                gridAutoRows: `${layout.height_mm}mm`,
+              }}
+            >
+              {Array.from({ length: perPage }).map((_, i) => (
+                <div
+                  key={i}
+                  className="relative border border-slate-200"
+                >
+                  {/* Ticket preview for first page */}
+                  {tickets?.[i] && (
+                    <div className="absolute inset-0 overflow-hidden" style={{ transform: `rotate(${rotation}deg)`, transformOrigin: "center center" }}>
+                      <TicketPreview
+                        designUrl={designUrl}
+                        template={template}
+                        serial={tickets[i].serial_number}
+                        code={tickets[i].verification_code}
+                        scale={PRINT_SCALE}
+                      />
+                    </div>
+                  )}
+                  {/* Dimension label */}
+                  {showDimensions && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="rounded bg-slate-900/80 px-2 py-1 text-xs text-white">
+                        {layout.width_mm} × {layout.height_mm} mm
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Page size indicator */}
+            <div className="absolute -right-16 top-0 flex h-full flex-col items-center justify-center text-xs text-slate-500">
+              <div className="writing-mode-vertical" style={{ writingMode: "vertical-rl" }}>297mm</div>
+            </div>
+            <div className="absolute -bottom-8 left-0 right-0 text-center text-xs text-slate-500">210mm</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Actual Print Area */}
       <div className="print-area">
         {!tickets?.length ? (
           <div className="rounded-xl border border-dashed p-12 text-center text-muted-foreground">No tickets to print.</div>
@@ -488,8 +603,8 @@ function PrintTab({ event }: { event: EventRow }) {
               }}
             >
               {page.map((t: any) => (
-                <div key={t.verification_code} className="overflow-hidden">
-                  <TicketPreview designUrl={designUrl} template={template} serial={t.serial_number} code={t.verification_code} scale={scale} />
+                <div key={t.verification_code} className="overflow-hidden" style={{ transform: `rotate(${rotation}deg)`, transformOrigin: "center center" }}>
+                  <TicketPreview designUrl={designUrl} template={template} serial={t.serial_number} code={t.verification_code} scale={PRINT_SCALE} />
                 </div>
               ))}
             </div>
