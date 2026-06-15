@@ -73,31 +73,49 @@ export type Database = {
       }
       tickets: {
         Row: {
+          buyer_email: string | null
+          buyer_name: string | null
+          buyer_phone: string | null
           created_at: string
           event_id: string
           id: string
+          price: number | null
           serial_number: string
           status: Database["public"]["Enums"]["ticket_status"]
+          ticket_type: string | null
+          ticket_type_id: string | null
           used_at: string | null
           used_by: string | null
           verification_code: string
         }
         Insert: {
+          buyer_email?: string | null
+          buyer_name?: string | null
+          buyer_phone?: string | null
           created_at?: string
           event_id: string
           id?: string
-          serial_number: string
+          price?: number | null
+          serial_number?: string
           status?: Database["public"]["Enums"]["ticket_status"]
+          ticket_type?: string | null
+          ticket_type_id?: string | null
           used_at?: string | null
           used_by?: string | null
           verification_code?: string
         }
         Update: {
+          buyer_email?: string | null
+          buyer_name?: string | null
+          buyer_phone?: string | null
           created_at?: string
           event_id?: string
           id?: string
+          price?: number | null
           serial_number?: string
           status?: Database["public"]["Enums"]["ticket_status"]
+          ticket_type?: string | null
+          ticket_type_id?: string | null
           used_at?: string | null
           used_by?: string | null
           verification_code?: string
@@ -105,6 +123,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "tickets_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ticket_types: {
+        Row: {
+          created_at: string
+          description: string | null
+          event_id: string
+          id: string
+          name: string
+          price: number
+          quantity_total: number
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          event_id: string
+          id?: string
+          name: string
+          price?: number
+          quantity_total?: number
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          event_id?: string
+          id?: string
+          name?: string
+          price?: number
+          quantity_total?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_types_event_id_fkey"
             columns: ["event_id"]
             isOneToOne: false
             referencedRelation: "events"
