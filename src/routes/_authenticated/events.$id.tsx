@@ -400,7 +400,7 @@ function TicketsTab({ eventId }: { eventId: string }) {
 
 // --- PRINT -----------------------------------------------------------------------
 function PrintTab({ event }: { event: EventRow }) {
-  const [perPage, setPerPage] = useState<4 | 6 | 8>(4);
+  const [perPage, setPerPage] = useState<4 | 6 | 8>(8);
   const [size, setSize] = useState<"A5" | "A6">("A5");
   const [designUrl, setDesignUrl] = useState<string | null>(null);
 
@@ -421,11 +421,30 @@ function PrintTab({ event }: { event: EventRow }) {
     },
   });
 
-  // Per-print template (override size on the fly)
-  const dims = size === "A5" ? { width_mm: 148, height_mm: 210 } : { width_mm: 105, height_mm: 148 };
+  // Layout config per perPage option.
+  // 8-up = 4 cols × 2 rows filling A4 portrait (each ticket ≈ 52.5mm × 148.5mm)
+  // 6-up = 3 cols × 2 rows (each ≈ 70mm × 148.5mm)
+  // 4-up = 2 cols × 2 rows A5-ish (each ≈ 105mm × 148.5mm)
+  const layout =
+    perPage === 8
+      ? { cols: 4, width_mm: 52.5, height_mm: 148.5 }
+      : perPage === 6
+      ? { cols: 3, width_mm: 70, height_mm: 148.5 }
+      : { cols: 2, width_mm: 105, height_mm: 148.5 };
+
+  // Convert mm → on-screen px at 96dpi so print mm matches exactly.
+  const MM_TO_PX = 96 / 25.4;
+  const scale =
+    perPage === 8
+      ? MM_TO_PX
+      : perPage === 6
+      ? MM_TO_PX
+      : size === "A5"
+      ? MM_TO_PX
+      : MM_TO_PX;
+
+  const dims = { width_mm: layout.width_mm, height_mm: layout.height_mm };
   const template = { ...event.template, ...dims };
-  const scale = perPage === 8 ? 1.1 : perPage === 6 ? 1.4 : 1.8;
-  const cols = perPage === 4 ? 2 : perPage === 6 ? 3 : 4;
 
   return (
     <div className="space-y-6">
@@ -438,14 +457,16 @@ function PrintTab({ event }: { event: EventRow }) {
             ))}
           </div>
         </div>
-        <div>
-          <Label className="text-xs">Ticket size</Label>
-          <div className="mt-1 flex gap-1">
-            {(["A5", "A6"] as const).map((n) => (
-              <Button key={n} size="sm" variant={size === n ? "default" : "outline"} onClick={() => setSize(n)}>{n}</Button>
-            ))}
+        {perPage === 4 && (
+          <div>
+            <Label className="text-xs">Ticket size</Label>
+            <div className="mt-1 flex gap-1">
+              {(["A5", "A6"] as const).map((n) => (
+                <Button key={n} size="sm" variant={size === n ? "default" : "outline"} onClick={() => setSize(n)}>{n}</Button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
         <Button onClick={() => window.print()} className="ml-auto"><Printer className="h-4 w-4" /> Print</Button>
       </div>
 
@@ -456,15 +477,18 @@ function PrintTab({ event }: { event: EventRow }) {
           chunk(tickets, perPage).map((page, pi) => (
             <div
               key={pi}
-              className="print-page mx-auto mb-6 grid gap-3 rounded-md border bg-white p-4 shadow"
+              className="print-page mx-auto mb-6 grid bg-white shadow"
               style={{
-                gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`,
+                gridTemplateColumns: `repeat(${layout.cols}, ${layout.width_mm}mm)`,
+                gridAutoRows: `${layout.height_mm}mm`,
                 width: "210mm",
-                minHeight: "297mm",
+                height: "297mm",
+                gap: 0,
+                padding: 0,
               }}
             >
               {page.map((t: any) => (
-                <div key={t.verification_code} className="grid place-items-center">
+                <div key={t.verification_code} className="overflow-hidden">
                   <TicketPreview designUrl={designUrl} template={template} serial={t.serial_number} code={t.verification_code} scale={scale} />
                 </div>
               ))}
